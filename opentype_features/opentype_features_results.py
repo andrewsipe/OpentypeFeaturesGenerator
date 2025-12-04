@@ -16,7 +16,7 @@ _project_root = Path(__file__).parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-import core.core_console_styles as cs  # noqa: E402
+import FontCore.core_console_styles as cs  # noqa: E402
 
 
 class ResultLevel(Enum):

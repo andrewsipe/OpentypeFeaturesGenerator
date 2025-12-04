@@ -72,8 +72,8 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Core imports (after path setup)
-import core.core_console_styles as cs  # noqa: E402
-from core.core_file_collector import collect_font_files as core_collect_font_files  # noqa: E402
+import FontCore.core_console_styles as cs  # noqa: E402
+from FontCore.core_file_collector import collect_font_files as core_collect_font_files  # noqa: E402
 from fontTools.ttLib import TTFont, newTable  # noqa: E402
 from fontTools.ttLib.tables import otTables  # noqa: E402
 from fontTools.ttLib.tables.otTables import Coverage, ExtensionSubst, ExtensionPos  # noqa: E402
