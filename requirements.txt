@@ -1,0 +1,14 @@
+# OpenType_Tools dependencies
+# Tools for OpenType feature generation and management.
+
+# Core dependencies (required by all scripts)
+fonttools>=4.40.0
+rich>=13.0.0
+
+# Font feature processing (optional but recommended)
+# Used for preserving existing features when generating new ones
+fontFeatures>=0.5.0
+
+# XML processing (for TTX operations)
+lxml>=4.9.0
+

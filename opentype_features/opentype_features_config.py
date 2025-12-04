@@ -1,0 +1,45 @@
+"""
+Configuration constants for OpenType feature generation.
+
+Centralizes all magic numbers, feature sets, and pattern definitions.
+"""
+
+from dataclasses import dataclass
+from typing import Set
+
+
+@dataclass(frozen=True)
+class FeatureConfig:
+    """Configuration for feature generation."""
+
+    # Name table
+    NAME_ID_START: int = 256
+    MAX_STYLISTIC_SETS: int = 20
+
+    # GSUB limits
+    MAX_ALTERNATES_PER_SET: int = 50
+
+    # OpenType versions
+    OT_VERSION_1_0: int = 0x00010000
+    OT_VERSION_1_2: int = 0x00010002
+
+    # Supported features
+    STANDARD_FEATURES: Set[str] = frozenset(
+        {"liga", "dlig", "smcp", "onum", "lnum", "tnum", "pnum", "swsh", "calt"}
+    )
+
+    # Glyph name patterns
+    SPECIAL_GLYPHS: Set[str] = frozenset({".notdef", ".null", "nonmarkingreturn"})
+
+    # Mark detection patterns (more precise)
+    MARK_PATTERNS: tuple = (
+        r".*comb$",  # combining
+        r".*comb\d+$",  # combining1, combining2
+        r"^comb",  # combdieresis
+        r".*mark$",  # topmark, bottommark
+        r".*accent$",  # accent
+    )
+
+
+# Global configuration instance
+CONFIG = FeatureConfig()
