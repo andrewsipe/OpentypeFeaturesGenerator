@@ -5,7 +5,7 @@ Centralizes all magic numbers, feature sets, and pattern definitions.
 """
 
 from dataclasses import dataclass
-from typing import Set
+from typing import Dict, List, Set
 
 
 @dataclass(frozen=True)
@@ -25,8 +25,41 @@ class FeatureConfig:
 
     # Supported features
     STANDARD_FEATURES: Set[str] = frozenset(
-        {"liga", "dlig", "smcp", "onum", "lnum", "tnum", "pnum", "swsh", "calt"}
+        {
+            "liga",
+            "dlig",
+            "smcp",
+            "onum",
+            "lnum",
+            "tnum",
+            "pnum",
+            "swsh",
+            "calt",
+            # Phase 1 enhanced features
+            "frac",
+            "sups",
+            "subs",
+            "ordn",
+            "c2sc",
+            "salt",
+            "zero",
+            "case",
+            "titl",
+        }
     )
+
+    # Phase 1 feature patterns
+    PHASE1_FEATURE_PATTERNS: Dict[str, List[str]] = {
+        "frac": [".numerator", ".denominator", ".numr", ".dnom"],
+        "sups": [".superior", ".sups"],
+        "subs": [".inferior", ".subs"],
+        "ordn": [".ordn"],
+        "c2sc": [".c2sc"],
+        "salt": [".alt", ".alt01", ".alt02"],
+        "zero": [".slash", ".zero"],
+        "case": [".case"],
+        "titl": [".titling", ".titl"],
+    }
 
     # Glyph name patterns
     SPECIAL_GLYPHS: Set[str] = frozenset({".notdef", ".null", "nonmarkingreturn"})

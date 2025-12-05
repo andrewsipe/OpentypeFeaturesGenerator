@@ -36,6 +36,18 @@ class GlyphClassification:
     is_mark: bool = False
     mark_class: Optional[str] = None  # combining, accent, etc.
 
+    # Phase 1 enhanced features
+    is_fraction_numerator: bool = False
+    is_fraction_denominator: bool = False
+    is_superscript: bool = False
+    is_subscript: bool = False
+    is_ordinal: bool = False
+    is_c2sc: bool = False
+    is_salt_alternate: bool = False
+    is_slashed_zero: bool = False
+    is_case_sensitive: bool = False
+    is_titling: bool = False
+
 
 class UnifiedGlyphDetector:
     """Single-pass glyph pattern detector."""
@@ -82,6 +94,16 @@ class UnifiedGlyphDetector:
             self._check_swash(glyph_name, classification)
             self._check_contextual_alternate(glyph_name, classification)
             self._check_mark(glyph_name, classification)
+            # Phase 1 enhanced features
+            self._check_fraction(glyph_name, classification)
+            self._check_superscript(glyph_name, classification)
+            self._check_subscript(glyph_name, classification)
+            self._check_ordinal(glyph_name, classification)
+            self._check_caps_to_small_caps(glyph_name, classification)
+            self._check_stylistic_alternate(glyph_name, classification)
+            self._check_slashed_zero(glyph_name, classification)
+            self._check_case_sensitive(glyph_name, classification)
+            self._check_titling(glyph_name, classification)
 
             classifications[glyph_name] = classification
 
@@ -230,6 +252,115 @@ class UnifiedGlyphDetector:
                 classification.mark_class = "pattern"
                 return
 
+    def _check_fraction(self, glyph_name: str, classification: GlyphClassification):
+        """Check if glyph is a fraction numerator or denominator."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("frac", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    if "numerator" in pattern or "numr" in pattern:
+                        classification.is_fraction_numerator = True
+                        classification.base_glyph = base_name
+                    elif "denominator" in pattern or "dnom" in pattern:
+                        classification.is_fraction_denominator = True
+                        classification.base_glyph = base_name
+                    return
+
+    def _check_superscript(self, glyph_name: str, classification: GlyphClassification):
+        """Check if glyph is a superscript variant."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("sups", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    classification.is_superscript = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_subscript(self, glyph_name: str, classification: GlyphClassification):
+        """Check if glyph is a subscript variant."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("subs", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    classification.is_subscript = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_ordinal(self, glyph_name: str, classification: GlyphClassification):
+        """Check if glyph is an ordinal variant."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("ordn", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    classification.is_ordinal = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_caps_to_small_caps(
+        self, glyph_name: str, classification: GlyphClassification
+    ):
+        """Check if glyph is a caps-to-small-caps variant."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("c2sc", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order and base_name.isupper():
+                    classification.is_c2sc = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_stylistic_alternate(
+        self, glyph_name: str, classification: GlyphClassification
+    ):
+        """Check if glyph is a stylistic alternate (salt)."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("salt", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    classification.is_salt_alternate = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_slashed_zero(self, glyph_name: str, classification: GlyphClassification):
+        """Check if glyph is a slashed zero variant."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("zero", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name == "zero" or base_name == "0":
+                    classification.is_slashed_zero = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_case_sensitive(
+        self, glyph_name: str, classification: GlyphClassification
+    ):
+        """Check if glyph is a case-sensitive form variant."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("case", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    classification.is_case_sensitive = True
+                    classification.base_glyph = base_name
+                    return
+
+    def _check_titling(self, glyph_name: str, classification: GlyphClassification):
+        """Check if glyph is a titling alternate."""
+        patterns = CONFIG.PHASE1_FEATURE_PATTERNS.get("titl", [])
+        for pattern in patterns:
+            if glyph_name.endswith(pattern):
+                base_name = glyph_name[: -len(pattern)]
+                if base_name in self.glyph_order:
+                    classification.is_titling = True
+                    classification.base_glyph = base_name
+                    return
+
     def get_features(self) -> Dict[str, any]:
         """Extract features from classifications."""
         classifications = self.classify_all_glyphs()
@@ -245,6 +376,16 @@ class UnifiedGlyphDetector:
             "pnum": [],
             "swsh": [],
             "calt": [],
+            # Phase 1 enhanced features
+            "frac": {"numerators": [], "denominators": []},
+            "sups": [],
+            "subs": [],
+            "ordn": [],
+            "c2sc": [],
+            "salt": [],
+            "zero": [],
+            "case": [],
+            "titl": [],
         }
 
         for glyph_name, classification in classifications.items():
@@ -281,5 +422,40 @@ class UnifiedGlyphDetector:
 
             if classification.is_contextual_alternate and classification.base_glyph:
                 features["calt"].append((classification.base_glyph, glyph_name))
+
+            # Phase 1 enhanced features
+            if classification.is_fraction_numerator and classification.base_glyph:
+                features["frac"]["numerators"].append(
+                    (classification.base_glyph, glyph_name)
+                )
+
+            if classification.is_fraction_denominator and classification.base_glyph:
+                features["frac"]["denominators"].append(
+                    (classification.base_glyph, glyph_name)
+                )
+
+            if classification.is_superscript and classification.base_glyph:
+                features["sups"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_subscript and classification.base_glyph:
+                features["subs"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_ordinal and classification.base_glyph:
+                features["ordn"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_c2sc and classification.base_glyph:
+                features["c2sc"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_salt_alternate and classification.base_glyph:
+                features["salt"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_slashed_zero and classification.base_glyph:
+                features["zero"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_case_sensitive and classification.base_glyph:
+                features["case"].append((classification.base_glyph, glyph_name))
+
+            if classification.is_titling and classification.base_glyph:
+                features["titl"].append((classification.base_glyph, glyph_name))
 
         return features

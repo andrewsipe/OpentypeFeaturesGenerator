@@ -2,10 +2,6 @@
 .DS_Store
 **/.DS_Store
 
-# Node.js dependencies
-node_modules/
-node_modules/*
-
 # Python cache and compiled files
 *.pyc
 *.pyo
@@ -39,14 +35,6 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-# VSCode settings
-.vscode/
-.vscode/*
-
-# PYSCN reports
-.pyscn/
-.pyscn/*
-
 # RUFF Cache
 .ruff_cache/
 .ruff_cache/*
@@ -61,6 +49,7 @@ temp_*
 *~
 
 # Editor/IDE files
+.vscode/
 .idea/
 *.swp
 *.swo
