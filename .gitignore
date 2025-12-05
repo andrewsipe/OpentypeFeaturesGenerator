@@ -17,4 +17,3 @@ __pycache__/
 .pyscn/*
 
 # RUFF Cache
-.ruff_cache/*
