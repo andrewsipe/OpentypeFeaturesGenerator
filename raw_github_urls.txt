@@ -1,18 +1,25 @@
 # Root directory
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/Opentype_FeaturesGenerator.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/Opentype_FeaturesGeneratorEnhanced.py
 https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/README.md
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_coverage_sorter.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_feature_apply.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_feature_audit.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_ss_repair.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_wrapper.py
 https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/requirements.txt
 
-# opentype_features/
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/__init__.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_config.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_detection.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_extraction.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_positioning.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_results.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_validation.py
-https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/opentype_features/opentype_features_wrapper.py
+# lib/
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/__init__.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/config.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/coverage.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/detection.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/feature_extraction.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/feature_generation.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/results.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/ss_labeler.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/utils.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/validation.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/wrapper.py
+https://raw.githubusercontent.com/andrewsipe/OpentypeFeaturesGenerator/main/lib/wrapper_helpers.py
 
 # FontCore/
 https://raw.githubusercontent.com/andrewsipe/FontCore/main/CoreDemoTool.py

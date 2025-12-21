@@ -3,15 +3,11 @@ Coverage table sorting for OpenType fonts.
 
 Sorts Coverage tables by GlyphID to match GlyphOrder, which is required
 by some font processors and prevents validation warnings.
+
+Uses direct fontTools API manipulation instead of TTX conversion for reliability.
 """
 
-import os
-import re
-import subprocess
-import tempfile
-import xml.etree.ElementTree as ET
-from io import StringIO
-from typing import Dict, Tuple
+from typing import Tuple
 
 from fontTools.ttLib import TTFont
 
@@ -30,258 +26,296 @@ if str(_project_root) not in sys.path:
 import FontCore.core_console_styles as cs  # noqa: E402
 
 
-def extract_glyph_order_from_ttx(ttx_content: str) -> Dict[str, int]:
-    """
-    Extract the GlyphOrder from TTX XML content.
-    Returns a dict mapping glyph names to their IDs.
-    """
+def get_glyph_id(font: TTFont, glyph_name: str) -> int:
+    """Get the glyph ID for a glyph name."""
     try:
-        root = ET.fromstring(ttx_content)
-    except ET.ParseError as e:
-        raise ValueError(f"Invalid TTX XML: {e}")
-
-    glyph_order = root.find("GlyphOrder")
-    if glyph_order is None:
-        raise ValueError("No GlyphOrder table found in TTX content")
-
-    glyph_to_id = {}
-    for glyph_id_elem in glyph_order.findall("GlyphID"):
-        glyph_name = glyph_id_elem.get("name")
-        glyph_id = int(glyph_id_elem.get("id"))
-        if glyph_name:
-            glyph_to_id[glyph_name] = glyph_id
-
-    return glyph_to_id
+        return font.getGlyphID(glyph_name)
+    except (KeyError, ValueError, AttributeError):
+        return float("inf")  # Put unknown glyphs at the end
 
 
-def sort_coverage_tables_in_ttx_content(
-    ttx_content: str, glyph_to_id: Dict[str, int], verbose: bool = False
-) -> Tuple[int, int, str]:
+def sort_coverage(font: TTFont, coverage) -> bool:
     """
-    Sort Coverage tables in TTX XML content by glyph ID.
-    Returns (total_coverage, sorted_count, sorted_content)
+    Sort a Coverage table by glyph IDs.
+
+    Returns:
+        True if sorting was needed (order changed), False otherwise
     """
-    total_coverage = 0
-    sorted_coverage = 0
+    if not hasattr(coverage, "glyphs") or not coverage.glyphs:
+        return False
 
-    # Pattern to match Coverage blocks with their Glyph entries
-    def process_coverage_block(match):
-        nonlocal total_coverage, sorted_coverage
+    # Get current order
+    old_glyphs = list(coverage.glyphs)
 
-        total_coverage += 1
-        full_block = match.group(0)
-        indent = match.group(1)
-        coverage_attrs = match.group(2)
-        inner_content = match.group(3)
+    # Get glyph IDs and sort
+    glyph_data = [(get_glyph_id(font, g), g) for g in coverage.glyphs]
+    glyph_data.sort(key=lambda x: x[0])
+    coverage.glyphs = [g for _, g in glyph_data]
 
-        # Find all Glyph value lines
-        glyph_pattern = re.compile(r'(\s*)<Glyph value="([^"]+)"/>')
-        glyph_matches = list(glyph_pattern.finditer(inner_content))
+    # Check if order changed
+    return old_glyphs != coverage.glyphs
 
-        if len(glyph_matches) <= 1:
-            return full_block
 
-        # Extract glyph values
-        glyph_values = [m.group(2) for m in glyph_matches]
+def sort_class_def(font: TTFont, class_def) -> bool:
+    """
+    Sort a ClassDef table by glyph IDs.
 
-        # Sort by glyph ID (position in GlyphOrder)
-        # Glyphs not in GlyphOrder get a high number to sort last
-        sorted_values = sorted(glyph_values, key=lambda g: glyph_to_id.get(g, 999999))
+    Returns:
+        True if sorting was needed, False otherwise
+    """
+    if not hasattr(class_def, "classDefs") or not class_def.classDefs:
+        return False
 
-        # Check if sorting is needed
-        if glyph_values == sorted_values:
-            return full_block
-
-        sorted_coverage += 1
-
-        if verbose:
-            # Show what changed
-            unsorted_ids = [glyph_to_id.get(g, -1) for g in glyph_values[:5]]
-            sorted_ids = [glyph_to_id.get(g, -1) for g in sorted_values[:5]]
-            cs.StatusIndicator("info").add_message(
-                f"Sorted Coverage (was IDs {unsorted_ids}, now {sorted_ids})"
-            ).emit()
-
-        # Rebuild the Coverage block with sorted glyphs
-        # Detect the indentation of the first Glyph element
-        first_glyph_indent = glyph_matches[0].group(1) if glyph_matches else "        "
-
-        # Build sorted glyph lines
-        sorted_glyph_lines = [
-            f'{first_glyph_indent}<Glyph value="{value}"/>' for value in sorted_values
-        ]
-
-        # Reconstruct the Coverage block
-        result = f"{indent}<Coverage{coverage_attrs}>\n"
-        result += "\n".join(sorted_glyph_lines)
-        result += f"\n{indent}</Coverage>"
-
-        return result
-
-    # Pattern to match Coverage blocks
-    coverage_pattern = re.compile(
-        r"(\s*)<Coverage([^>]*)>\s*\n((?:\s*<Glyph[^>]+/>\s*\n)+)\s*\1</Coverage>",
-        re.MULTILINE,
+    # ClassDef is a dict, just ensure it's ordered by glyph ID
+    old_items = list(class_def.classDefs.items())
+    sorted_items = sorted(
+        class_def.classDefs.items(), key=lambda x: get_glyph_id(font, x[0])
     )
+    class_def.classDefs = dict(sorted_items)
 
-    # Replace all Coverage blocks with sorted versions
-    sorted_content = coverage_pattern.sub(process_coverage_block, ttx_content)
-
-    return total_coverage, sorted_coverage, sorted_content
+    # Check if order changed (dict order matters in Python 3.7+)
+    return old_items != sorted_items
 
 
-def sort_coverage_tables_in_font(font: TTFont, verbose: bool = False) -> Tuple[int, int]:
+def process_lookup(font: TTFont, lookup) -> int:
     """
-    Sort all Coverage tables in a font by glyph ID using TTX conversion.
-    This ensures sorting matches the exact behavior of Tools_TTX_GSUB_GPOS_CoverageTableSorter.py
-    by converting to TTX, sorting by GlyphOrder IDs, then converting back.
+    Process a single lookup and sort all its Coverage tables.
 
-    The font object is modified in place by reloading from the sorted TTX.
+    Returns:
+        Number of coverage tables sorted
+    """
+    sorted_count = 0
 
-    Args:
-        font: TTFont object (will be reloaded from sorted TTX if sorting occurs)
-        verbose: Whether to show verbose output
+    if not hasattr(lookup, "SubTable"):
+        return sorted_count
+
+    for subtable in lookup.SubTable:
+        # Sort main Coverage
+        if hasattr(subtable, "Coverage"):
+            if sort_coverage(font, subtable.Coverage):
+                sorted_count += 1
+
+        # Handle different subtable types
+        if hasattr(subtable, "ClassDef"):
+            sort_class_def(font, subtable.ClassDef)
+
+        if hasattr(subtable, "BacktrackCoverage"):
+            for cov in subtable.BacktrackCoverage:
+                if sort_coverage(font, cov):
+                    sorted_count += 1
+
+        if hasattr(subtable, "InputCoverage"):
+            for cov in subtable.InputCoverage:
+                if sort_coverage(font, cov):
+                    sorted_count += 1
+
+        if hasattr(subtable, "LookAheadCoverage"):
+            for cov in subtable.LookAheadCoverage:
+                if sort_coverage(font, cov):
+                    sorted_count += 1
+
+        # PairPos specific - reorder PairSet to match sorted Coverage
+        if hasattr(subtable, "PairSet"):
+            try:
+                if hasattr(subtable.Coverage, "glyphs") and subtable.Coverage.glyphs:
+                    # Need to reorder PairSet to match sorted Coverage
+                    old_glyphs = list(subtable.Coverage.glyphs)
+                    if sort_coverage(font, subtable.Coverage):
+                        sorted_count += 1
+                    new_glyphs = subtable.Coverage.glyphs
+
+                    # Create mapping from old position to new position
+                    old_to_new = {}
+                    for old_idx, glyph in enumerate(old_glyphs):
+                        if glyph in new_glyphs:
+                            new_idx = new_glyphs.index(glyph)
+                            old_to_new[old_idx] = new_idx
+
+                    # Reorder PairSet array
+                    if subtable.PairSet and len(old_to_new) == len(old_glyphs):
+                        old_pairset = subtable.PairSet[:]
+                        new_pairset = [None] * len(old_pairset)
+                        for old_idx, new_idx in old_to_new.items():
+                            if old_idx < len(old_pairset):
+                                new_pairset[new_idx] = old_pairset[old_idx]
+
+                        # Validate no None values remain
+                        if None not in new_pairset:
+                            subtable.PairSet = new_pairset
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+        # LigatureSubst specific - reorder ligature sets
+        if hasattr(subtable, "ligatures"):
+            try:
+                if hasattr(subtable.Coverage, "glyphs") and subtable.Coverage.glyphs:
+                    old_glyphs = list(subtable.Coverage.glyphs)
+                    if sort_coverage(font, subtable.Coverage):
+                        sorted_count += 1
+                    new_glyphs = subtable.Coverage.glyphs
+
+                    old_ligatures = subtable.ligatures.copy()
+                    new_ligatures = {}
+                    for glyph in new_glyphs:
+                        if glyph in old_ligatures:
+                            new_ligatures[glyph] = old_ligatures[glyph]
+                    subtable.ligatures = new_ligatures
+            except (AttributeError, TypeError):
+                pass
+
+    return sorted_count
+
+
+def process_table(font: TTFont, table_tag: str) -> Tuple[int, int]:
+    """
+    Process GSUB or GPOS table.
 
     Returns:
         (total_coverage, sorted_count) tuple
     """
-    try:
-        # Convert font to TTX XML string using fontTools
-        ttx_buffer = StringIO()
-        font.saveXML(ttx_buffer)
-        ttx_content = ttx_buffer.getvalue()
+    total_coverage = 0
+    sorted_count = 0
 
-        # Extract GlyphOrder to get glyph IDs (matching TTX sorter logic exactly)
-        glyph_to_id = extract_glyph_order_from_ttx(ttx_content)
+    if table_tag not in font:
+        return total_coverage, sorted_count
 
-        if verbose:
-            cs.StatusIndicator("info").add_message(
-                f"Extracted {len(glyph_to_id)} glyphs from GlyphOrder"
-            ).emit()
+    table = font[table_tag]
 
-        # Sort Coverage tables in TTX content using exact TTX sorter logic
-        total, sorted_count, sorted_ttx_content = sort_coverage_tables_in_ttx_content(
-            ttx_content, glyph_to_id, verbose
-        )
+    if hasattr(table, "table"):
+        table = table.table
 
-        # If sorting occurred, reload font from sorted TTX
-        if sorted_count > 0:
-            # Determine output extension based on font type (before closing font)
-            font_ext = ".otf"  # Default to OTF
-            if hasattr(font, "sfntVersion"):
-                # Check if it's TTF or OTF
-                # TTF: "\x00\x01\x00\x00", OTF: "OTTO"
-                if font.sfntVersion == "\x00\x01\x00\x00":
-                    font_ext = ".ttf"
+    # Process all lookup lists
+    if hasattr(table, "LookupList") and table.LookupList:
+        for lookup in table.LookupList.Lookup:
+            # Count coverage tables in this lookup
+            if hasattr(lookup, "SubTable"):
+                for subtable in lookup.SubTable:
+                    # Count main Coverage
+                    if hasattr(subtable, "Coverage") and hasattr(
+                        subtable.Coverage, "glyphs"
+                    ):
+                        if subtable.Coverage.glyphs:
+                            total_coverage += 1
 
-            # Use temporary file for TTX
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".ttx", delete=False, encoding="utf-8"
-            ) as tmp_ttx:
-                tmp_ttx.write(sorted_ttx_content)
-                tmp_ttx_path = tmp_ttx.name
+                    # Count contextual coverage
+                    if hasattr(subtable, "BacktrackCoverage"):
+                        total_coverage += len(subtable.BacktrackCoverage)
+                    if hasattr(subtable, "InputCoverage"):
+                        total_coverage += len(subtable.InputCoverage)
+                    if hasattr(subtable, "LookAheadCoverage"):
+                        total_coverage += len(subtable.LookAheadCoverage)
 
-            # Create temp binary file path (same directory, different extension)
-            tmp_bin_path = tmp_ttx_path.rsplit(".", 1)[0] + font_ext
+            # Sort coverage in this lookup
+            sorted_count += process_lookup(font, lookup)
 
-            try:
-                # Convert sorted TTX back to binary using ttx command-line tool
-                # Use ttx to compile TTX back to binary
-                # ttx -f -o output.otf input.ttx
-                # -f forces overwrite, -o specifies output file
-                result = subprocess.run(
-                    ["ttx", "-f", "-o", tmp_bin_path, tmp_ttx_path],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
+    return total_coverage, sorted_count
 
-                if result.returncode != 0:
-                    error_msg = result.stderr or result.stdout or "Unknown error"
-                    raise ValueError(f"ttx compilation failed: {error_msg}")
 
-                # Verify the output file was created and has content
-                if not os.path.exists(tmp_bin_path):
-                    raise ValueError(
-                        f"ttx compilation succeeded but output file not found: {tmp_bin_path}"
-                    )
+def process_gdef(font: TTFont) -> Tuple[int, int]:
+    """
+    Process GDEF table.
 
-                if os.path.getsize(tmp_bin_path) == 0:
-                    raise ValueError(
-                        f"ttx compilation created empty file: {tmp_bin_path}"
-                    )
+    Returns:
+        (total_coverage, sorted_count) tuple
+    """
+    total_coverage = 0
+    sorted_count = 0
 
-                # Reload font from sorted binary file
-                # Load new font first (before closing old one to preserve any file paths)
-                try:
-                    new_font = TTFont(tmp_bin_path, lazy=False)
-                except Exception as load_error:
-                    raise ValueError(
-                        f"Failed to load compiled font from {tmp_bin_path}: {load_error}. "
-                        f"TTX file: {tmp_ttx_path}, ttx output: {result.stdout}, errors: {result.stderr}"
-                    )
+    if "GDEF" not in font:
+        return total_coverage, sorted_count
 
-                # Update the original font object by replacing its internal state
-                # Get list of existing table tags before closing (for cleanup)
-                old_tags = list(font.keys()) if hasattr(font, "keys") else []
+    gdef = font["GDEF"].table
 
-                # Copy all tables from new font to old font BEFORE closing
-                # This way the font object is still valid
-                for tag in new_font.keys():
-                    font[tag] = new_font[tag]
+    # Sort LigCaretList Coverage
+    if hasattr(gdef, "LigCaretList") and gdef.LigCaretList:
+        lig_caret = gdef.LigCaretList
+        if hasattr(lig_caret, "Coverage") and hasattr(lig_caret.Coverage, "glyphs"):
+            if lig_caret.Coverage.glyphs:
+                total_coverage += 1
+                old_glyphs = list(lig_caret.Coverage.glyphs)
+                if sort_coverage(font, lig_caret.Coverage):
+                    sorted_count += 1
+                new_glyphs = lig_caret.Coverage.glyphs
 
-                # Remove old tables that won't be replaced
-                for tag in old_tags:
-                    if tag not in new_font:
-                        try:
-                            del font[tag]
-                        except Exception:
-                            pass
+                # Reorder LigGlyph array to match sorted Coverage
+                if hasattr(lig_caret, "LigGlyph") and lig_caret.LigGlyph and old_glyphs:
+                    old_lig_glyphs = lig_caret.LigGlyph[:]
+                    new_lig_glyphs = [None] * len(old_lig_glyphs)
 
-                # Copy font-level attributes
-                if hasattr(new_font, "sfntVersion"):
-                    font.sfntVersion = new_font.sfntVersion
-                if hasattr(new_font, "flavor"):
-                    font.flavor = new_font.flavor
-                if hasattr(new_font, "lazy"):
-                    font.lazy = new_font.lazy
+                    for i, old_glyph in enumerate(old_glyphs):
+                        if old_glyph in new_glyphs and i < len(old_lig_glyphs):
+                            new_idx = new_glyphs.index(old_glyph)
+                            new_lig_glyphs[new_idx] = old_lig_glyphs[i]
 
-                # Close both fonts
-                new_font.close()
-                # Note: We don't close the original font here as it's still in use
-                # The caller will close it when done
+                    # Validate no None values remain before assigning
+                    if None in new_lig_glyphs:
+                        lig_caret.LigGlyph = [
+                            lg for lg in new_lig_glyphs if lg is not None
+                        ]
+                    else:
+                        lig_caret.LigGlyph = new_lig_glyphs
 
-                # Clean up temp files
-                os.unlink(tmp_ttx_path)
-                os.unlink(tmp_bin_path)
+    # Sort AttachList Coverage
+    if hasattr(gdef, "AttachList") and gdef.AttachList:
+        if hasattr(gdef.AttachList, "Coverage") and hasattr(
+            gdef.AttachList.Coverage, "glyphs"
+        ):
+            if gdef.AttachList.Coverage.glyphs:
+                total_coverage += 1
+                if sort_coverage(font, gdef.AttachList.Coverage):
+                    sorted_count += 1
 
-            except FileNotFoundError:
-                # ttx command not found - fall back to binary sorting
-                if verbose:
-                    cs.StatusIndicator("warning").add_message(
-                        "ttx command not found, falling back to binary sorting"
-                    ).emit()
-                os.unlink(tmp_ttx_path)
-                # Fall through to binary sorting below
-                raise ValueError("ttx command not available")
-            except Exception as e:
-                # Clean up temp files on error
-                try:
-                    os.unlink(tmp_ttx_path)
-                    if "tmp_bin_path" in locals() and os.path.exists(tmp_bin_path):
-                        os.unlink(tmp_bin_path)
-                except Exception:
-                    pass
-                raise ValueError(f"Failed to reload font from sorted TTX: {e}")
+    # Sort MarkAttachClassDef
+    if hasattr(gdef, "MarkAttachClassDef") and gdef.MarkAttachClassDef:
+        sort_class_def(font, gdef.MarkAttachClassDef)
 
-        return total, sorted_count
+    # Sort GlyphClassDef
+    if hasattr(gdef, "GlyphClassDef") and gdef.GlyphClassDef:
+        sort_class_def(font, gdef.GlyphClassDef)
 
-    except Exception as e:
-        if verbose:
-            cs.StatusIndicator("warning").add_message(
-                f"TTX-based sorting failed: {e}"
-            ).with_explanation("Coverage tables may not be sorted correctly").emit()
+    return total_coverage, sorted_count
 
-        # Return zero counts on error
-        return 0, 0
 
+def sort_coverage_tables_in_font(
+    font: TTFont, verbose: bool = False
+) -> Tuple[int, int]:
+    """
+    Sort all Coverage tables in a font by glyph ID using direct fontTools API.
+
+    This directly manipulates the font object's Coverage tables, which is more
+    reliable than TTX conversion and doesn't require the ttx command-line tool.
+
+    The font object is modified in place.
+
+    Args:
+        font: TTFont object (modified in place)
+        verbose: Whether to show verbose output
+
+    Returns:
+        (total_coverage, sorted_count) tuple
+        Returns (0, 0) only when there are genuinely no coverage tables found.
+    """
+    total_coverage = 0
+    sorted_count = 0
+
+    # Process GSUB table
+    gsub_total, gsub_sorted = process_table(font, "GSUB")
+    total_coverage += gsub_total
+    sorted_count += gsub_sorted
+
+    # Process GPOS table
+    gpos_total, gpos_sorted = process_table(font, "GPOS")
+    total_coverage += gpos_total
+    sorted_count += gpos_sorted
+
+    # Process GDEF table
+    gdef_total, gdef_sorted = process_gdef(font)
+    total_coverage += gdef_total
+    sorted_count += gdef_sorted
+
+    if verbose and total_coverage > 0:
+        cs.StatusIndicator("info").add_message(
+            f"Found {total_coverage} Coverage table(s), sorted {sorted_count}"
+        ).emit()
+
+    return total_coverage, sorted_count

@@ -7,7 +7,9 @@ required by some font processors and prevents validation warnings.
 """
 
 import argparse
+import logging
 import sys
+import warnings
 from pathlib import Path
 
 # Add project root to path for FontCore imports
@@ -24,6 +26,11 @@ from fontTools.ttLib import TTFont  # noqa: E402
 
 from lib.coverage import sort_coverage_tables_in_font  # noqa: E402
 from lib.utils import collect_font_files  # noqa: E402
+
+# Suppress noisy fontTools warnings about coverage sorting
+# Must be after fontTools imports
+warnings.filterwarnings("ignore", message=".*Coverage.*not sorted.*")
+logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 
 def main():
@@ -79,44 +86,70 @@ def main():
         try:
             font = TTFont(font_path, lazy=False)
 
-            if args.dry_run:
-                # For dry-run, we still need to check if sorting is needed
-                # We'll do a quick check by sorting and seeing if anything changed
-                # (This is a bit inefficient but necessary for accurate dry-run)
-                total, sorted_count = sort_coverage_tables_in_font(
-                    font, verbose=args.verbose
-                )
-                if sorted_count > 0:
-                    cs.StatusIndicator("info").add_message(
-                        f"Would sort {sorted_count} of {total} Coverage table(s)"
-                    ).emit()
+            try:
+                if args.dry_run:
+                    # For dry-run, we still need to check if sorting is needed
+                    # We'll do a quick check by sorting and seeing if anything changed
+                    # (This is a bit inefficient but necessary for accurate dry-run)
+                    total, sorted_count = sort_coverage_tables_in_font(
+                        font, verbose=args.verbose
+                    )
+                    if sorted_count > 0:
+                        cs.StatusIndicator("info").add_message(
+                            f"Would sort {sorted_count} of {total} Coverage table(s)"
+                        ).emit()
+                    elif total > 0:
+                        cs.StatusIndicator("info").add_message(
+                            f"All {total} Coverage table(s) already sorted"
+                        ).emit()
+                    else:
+                        cs.StatusIndicator("info").add_message(
+                            "No Coverage tables found"
+                        ).emit()
                 else:
-                    cs.StatusIndicator("info").add_message(
-                        f"All {total} Coverage table(s) already sorted"
-                    ).emit()
-            else:
-                total, sorted_count = sort_coverage_tables_in_font(
-                    font, verbose=args.verbose
-                )
-                total_coverage += total
-                total_sorted += sorted_count
+                    total, sorted_count = sort_coverage_tables_in_font(
+                        font, verbose=args.verbose
+                    )
+                    total_coverage += total
+                    total_sorted += sorted_count
 
-                if sorted_count > 0:
-                    font.save(font_path)
-                    cs.StatusIndicator("success").add_message(
-                        f"Sorted {sorted_count} of {total} Coverage table(s)"
-                    ).emit()
-                    success_count += 1
-                elif total > 0:
-                    cs.StatusIndicator("info").add_message(
-                        f"All {total} Coverage table(s) already sorted"
-                    ).emit()
-                    success_count += 1
-                else:
-                    cs.StatusIndicator("info").add_message(
-                        "No Coverage tables found"
-                    ).emit()
-                    success_count += 1
+                    if total > 0:
+                        # Always save when coverage tables exist, even if they appear sorted
+                        # This ensures the binary file matches the sorted TTX representation
+                        try:
+                            font.save(font_path)
+                            if sorted_count > 0:
+                                cs.StatusIndicator("success").add_message(
+                                    f"Sorted {sorted_count} of {total} Coverage table(s)"
+                                ).emit()
+                            else:
+                                cs.StatusIndicator("success").add_message(
+                                    f"All {total} Coverage table(s) already sorted"
+                                ).emit()
+                            success_count += 1
+                        except Exception as save_error:
+                            cs.StatusIndicator("error").add_message(
+                                f"Failed to save font after sorting: {save_error}"
+                            ).emit()
+                            error_count += 1
+                    else:
+                        cs.StatusIndicator("info").add_message(
+                            "No Coverage tables found"
+                        ).emit()
+                        success_count += 1
+
+            except ValueError as e:
+                # Specific error from sort_coverage_tables_in_font (ttx not found, etc.)
+                cs.StatusIndicator("error").add_message(
+                    f"Failed to sort Coverage tables: {e}"
+                ).emit()
+                error_count += 1
+            except Exception as sort_error:
+                # Other unexpected errors during sorting
+                cs.StatusIndicator("error").add_message(
+                    f"Unexpected error during sorting: {sort_error}"
+                ).emit()
+                error_count += 1
 
             font.close()
 
